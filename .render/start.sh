@@ -7,6 +7,7 @@ php artisan route:cache
 php artisan view:cache
 
 php artisan migrate --force
+php artisan net:check || true
 if [ "$SEED_DEMO" = "true" ]; then
   php artisan db:seed --class=DemoDealsSeeder --force
 fi

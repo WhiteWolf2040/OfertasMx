@@ -29,15 +29,26 @@ class HttpProvider implements ScraperProvider
             $addresses = $this->urlValidator->validate($currentUrl);
             $parts = parse_url($currentUrl);
             $host = trim((string) ($parts['host'] ?? ''), '[]');
-            $httpOptions = ['allow_redirects' => false, 'proxy' => ''];
+            $curlOptions = self::ipv4CurlOptions();
+            $httpOptions = [
+                'allow_redirects' => false,
+                'proxy' => '',
+                'curl' => $curlOptions,
+            ];
 
             if (filter_var($host, FILTER_VALIDATE_IP) === false) {
                 $port = $parts['port'] ?? (strtolower((string) ($parts['scheme'] ?? '')) === 'https' ? 443 : 80);
-                $resolveEntries = array_map(
+                $ipv4Addresses = array_values(array_filter(
+                    $addresses,
+                    static fn (string $address): bool => filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false,
+                ));
+                if ($ipv4Addresses === []) {
+                    throw new HttpException(502, 'La tienda no tiene una dirección IPv4 pública disponible.');
+                }
+                $httpOptions['curl'][CURLOPT_RESOLVE] = array_map(
                     static fn (string $address) => $host.':'.$port.':'.(str_contains($address, ':') ? '['.$address.']' : $address),
-                    $addresses
+                    $ipv4Addresses
                 );
-                $httpOptions['curl'] = [CURLOPT_RESOLVE => $resolveEntries];
             }
 
             try {
@@ -51,6 +62,14 @@ class HttpProvider implements ScraperProvider
                     ->withOptions($httpOptions)
                     ->get($currentUrl);
             } catch (ConnectionException $exception) {
+                $cause = $exception->getPrevious() ?? $exception;
+                Log::warning('HTTP provider connection failed', [
+                    'provider' => $this->name(),
+                    'destination_host' => $host,
+                    'exception_class' => $cause::class,
+                    'exception_message' => $cause->getMessage(),
+                    'connection_exception_class' => $exception::class,
+                ]);
                 throw new HttpException(502, 'No fue posible conectar con la tienda.', $exception);
             }
 
@@ -86,5 +105,13 @@ class HttpProvider implements ScraperProvider
         }
 
         throw new HttpException(502, 'La tienda excedió el límite de redirecciones.');
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public static function ipv4CurlOptions(): array
+    {
+        return [CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4];
     }
 }
