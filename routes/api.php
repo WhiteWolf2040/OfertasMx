@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DealController;
+use App\Http\Controllers\ReadOnlyApiController;
 use App\Http\Controllers\RobotController;
 use App\Http\Controllers\RobotNotificationController;
 use App\Http\Controllers\ScrapeController;
@@ -14,6 +15,38 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::get('/categories', CategoryController::class);
 Route::get('/deals', [DealController::class, 'index']);
 Route::get('/deals/{deal}', [DealController::class, 'show']);
+
+Route::prefix('v1')->group(function (): void {
+    Route::post('/login', [AuthController::class, 'apiLogin'])
+        ->middleware('throttle:5,1')
+        ->name('api.v1.login');
+
+    Route::middleware('auth:sanctum')->group(function (): void {
+        Route::post('/logout', [AuthController::class, 'logout'])
+            ->name('api.v1.logout');
+
+        foreach ([
+            'categories',
+            'deals',
+            'comments',
+            'votes',
+            'robots',
+            'robot-runs',
+            'store-profiles',
+            'robot-notifications',
+            'users',
+        ] as $resource) {
+            Route::get('/'.$resource, [ReadOnlyApiController::class, 'index'])
+                ->defaults('resource', $resource)
+                ->name('api.v1.'.$resource.'.index');
+
+            Route::get('/'.$resource.'/{id}', [ReadOnlyApiController::class, 'show'])
+                ->whereNumber('id')
+                ->defaults('resource', $resource)
+                ->name('api.v1.'.$resource.'.show');
+        }
+    });
+});
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout']);

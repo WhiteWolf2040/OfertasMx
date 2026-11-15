@@ -74,3 +74,27 @@ Store-specific selectors live in `config/scraper.php`. Store markup changes over
 The browser opens a minimized visible window by default (`SCRAPER_BROWSER_HEADLESS=false`). Set it to `true` for headless mode. Optionally set `SCRAPER_BROWSER_CHANNEL=chrome` to use installed Google Chrome; Playwright Chromium is used if Chrome is unavailable. Only one browser process may run at a time. To inspect a scrape from the terminal, run `php artisan scrape:debug "https://example.com/product"`.
 
 The debug command lists all provider attempts and block signals. Use `--provider=browser` to test only the browser, and add `--save` to write its rendered HTML and screenshot under `storage/app/debug/`.
+
+## API REST de solo lectura (v1)
+
+La API de lectura está versionada bajo `/api/v1` para conservar sin cambios las respuestas y rutas que ya utiliza la web.
+
+| Recurso | Acceso |
+| --- | --- |
+| `categories`, `deals`, `comments`, `votes` | Público |
+| `robots`, `robot-runs`, `store-profiles`, `robot-notifications`, `users` | Requiere token Sanctum |
+
+Cada recurso tiene una ruta de lista (`GET /api/v1/{recurso}?limit=20&offset=0`) y una ruta de detalle (`GET /api/v1/{recurso}/{id}`). La lista devuelve `count`, `next`, `previous` y `results`; `limit` debe estar entre 1 y 100. Las relaciones se serializan como URLs. Los recursos privados solo incluyen registros del usuario autenticado, excepto perfiles de usuario: únicamente exponen `id` y `name` y requieren autenticación. No se devuelven emails, contraseñas ni tokens.
+
+Para comprobar la API:
+
+1. Inicia el backend con `php artisan serve` desde `scraping_back/scraping_app`.
+2. Prueba `http://127.0.0.1:8000/api/v1/categories?limit=2` y abre un detalle usando un ID devuelto, por ejemplo `http://127.0.0.1:8000/api/v1/categories/1`.
+3. En Postman, inicia sesión con `POST /api/login`, copia el token devuelto y úsalo como `Authorization: Bearer <token>` para probar los recursos privados.
+4. Ejecuta `php artisan test --filter=ReadOnlyApiTest` para validar paginación, relaciones, autenticación, errores y compatibilidad con rutas antiguas.
+
+Para mostrar evidencia, captura en Postman (o en las herramientas de red del navegador) el URL y método, el código HTTP y el JSON de una lista paginada, un detalle, una petición privada sin token (`401`) y una petición con token. Si pruebas CORS, incluye también el origen de la aplicación cliente y los encabezados de la respuesta en la captura.
+
+### PostgreSQL en Render
+
+El contenedor de Render usa el `Dockerfile`, que instala `pdo_pgsql`. Si ejecutas Laravel localmente en Windows contra PostgreSQL, también necesitas habilitar `extension=pdo_pgsql` en el `php.ini` del PHP con el que ejecutas `artisan`. Para una base vinculada en Render, Laravel acepta `DB_URL` o, como alternativa, la variable `DATABASE_URL`. En el servicio web de Render utiliza la URL interna de la base; desde un equipo local, utiliza la URL externa y permite la IP pública del equipo en la lista de acceso de la base.

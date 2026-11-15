@@ -28,21 +28,21 @@ class AuthController extends Controller
 
     public function login(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'email' => ['required', 'email'],
-            'password' => ['required', 'string'],
-        ]);
-
-        $user = User::where('email', $data['email'])->first();
-        if ($user === null || ! Hash::check($data['password'], $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['El correo o la contraseña son incorrectos.'],
-            ]);
-        }
+        $user = $this->validateCredentials($request);
 
         return response()->json([
             'user' => $user,
             'token' => $user->createToken('web')->plainTextToken,
+        ]);
+    }
+
+    public function apiLogin(Request $request): JsonResponse
+    {
+        $user = $this->validateCredentials($request);
+
+        return response()->json([
+            'user' => $user->only(['id', 'name', 'email']),
+            'token' => $user->createToken('api')->plainTextToken,
         ]);
     }
 
@@ -56,5 +56,22 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         return response()->json(['user' => $request->user()]);
+    }
+
+    private function validateCredentials(Request $request): User
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required', 'string'],
+        ]);
+
+        $user = User::where('email', $data['email'])->first();
+        if ($user === null || ! Hash::check($data['password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'email' => ['El correo o la contraseña son incorrectos.'],
+            ]);
+        }
+
+        return $user;
     }
 }
