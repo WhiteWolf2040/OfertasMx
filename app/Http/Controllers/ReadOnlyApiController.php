@@ -37,7 +37,7 @@ class ReadOnlyApiController extends Controller
         'users',
     ];
 
-    public function apiIndex(Request $request): JsonResponse
+    public function resourcesIndex(Request $request): JsonResponse
     {
         $token = $request->attributes->get(ResolveReadOnlyShareToken::REQUEST_ATTRIBUTE);
         if (! is_string($token) || $token === '') {

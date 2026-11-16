@@ -35,10 +35,12 @@ Route::prefix('v1')->group(function (): void {
             ->middleware('throttle:api-link')
             ->name('api.v1.api-link.destroy');
 
-        Route::get('/', [ReadOnlyApiController::class, 'apiIndex'])
+        Route::get('/', [ReadOnlyApiController::class, 'all'])
             ->name('api.v1.index');
         Route::get('/all', [ReadOnlyApiController::class, 'all'])
             ->name('api.v1.all');
+        Route::get('/resources', [ReadOnlyApiController::class, 'resourcesIndex'])
+            ->name('api.v1.resources');
 
         foreach ([
             'categories',

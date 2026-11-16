@@ -80,7 +80,7 @@ class ApiLinkController extends Controller
 
     private function linkResponse(string $plainTextToken): JsonResponse
     {
-        $baseUrl = rtrim((string) config('app.url'), '/').'/api/v1';
+        $baseUrl = rtrim((string) config('app.url'), '/').'/api/v1/all';
         $link = $baseUrl.'?'.http_build_query(
             ['token' => $plainTextToken],
             '',

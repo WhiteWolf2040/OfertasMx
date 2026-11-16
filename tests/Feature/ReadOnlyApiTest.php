@@ -324,7 +324,7 @@ class ReadOnlyApiTest extends TestCase
         );
         $this->assertSame($plainTextToken, $linkQuery['token']);
         $this->assertSame(
-            config('app.url').'/api/v1?token='.rawurlencode($plainTextToken),
+            config('app.url').'/api/v1/all?token='.rawurlencode($plainTextToken),
             $response->json('link')
         );
 
@@ -372,7 +372,7 @@ class ReadOnlyApiTest extends TestCase
         $this->assertSame($shareToken, $previousQuery['token']);
         $this->assertSame('0', $previousQuery['offset']);
 
-        $resourceIndex = $this->getJson('/api/v1?token='.$encodedToken);
+        $resourceIndex = $this->getJson('/api/v1/resources?token='.$encodedToken);
         $resourceIndex->assertOk()
             ->assertJsonCount(8)
             ->assertJsonMissingPath('users')
@@ -389,10 +389,20 @@ class ReadOnlyApiTest extends TestCase
         ] as $resource) {
             $this->assertSame($shareToken, $this->queryToken($resourceIndex->json($resource)));
         }
+        $this->withToken($shareToken)
+            ->getJson('/api/v1/resources')
+            ->assertOk()
+            ->assertJsonCount(8)
+            ->assertJsonMissingPath('users');
 
+        $this->getJson('/api/v1?token='.$encodedToken)
+            ->assertOk()
+            ->assertJsonPath('categories.count', 2)
+            ->assertJsonMissingPath('users');
         $this->withToken($shareToken)
             ->getJson('/api/v1')
             ->assertOk()
+            ->assertJsonPath('categories.count', 2)
             ->assertJsonMissingPath('users');
         $this->withToken($shareToken)
             ->getJson('/api/v1/users')
@@ -409,6 +419,9 @@ class ReadOnlyApiTest extends TestCase
             ->assertJsonPath('message', 'Unauthenticated.');
         $this->withToken($ordinaryToken)
             ->getJson('/api/v1')
+            ->assertUnauthorized();
+        $this->withToken($ordinaryToken)
+            ->getJson('/api/v1/resources')
             ->assertUnauthorized();
         $this->getJson('/api/me?token='.rawurlencode($shareToken))
             ->assertUnauthorized()
@@ -445,6 +458,11 @@ class ReadOnlyApiTest extends TestCase
             ->assertJsonMissingPath('users')
             ->assertJsonMissingPath('categories.results.0.password')
             ->assertJsonMissingPath('categories.results.0.remember_token');
+
+        $this->getJson('/api/v1?token='.$encodedToken)
+            ->assertOk()
+            ->assertJsonPath('categories.count', 101)
+            ->assertJsonCount(100, 'categories.results');
 
         foreach ([
             'categories',
@@ -504,6 +522,10 @@ class ReadOnlyApiTest extends TestCase
         $newLinkResponse->assertOk();
         $newToken = $newLinkResponse->json('token');
         $this->assertNotSame($firstLink, $newToken);
+        $this->assertSame(
+            config('app.url').'/api/v1/all?token='.rawurlencode($newToken),
+            $newLinkResponse->json('link')
+        );
         $this->assertSame(1, $user->tokens()->where('name', 'api-link')->count());
 
         $this->getJson('/api/v1?token='.rawurlencode($firstLink), ['Authorization' => ''])
