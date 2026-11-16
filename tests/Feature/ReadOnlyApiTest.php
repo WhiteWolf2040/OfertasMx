@@ -424,6 +424,70 @@ class ReadOnlyApiTest extends TestCase
             ->assertJsonPath('message', 'Unauthenticated.');
     }
 
+    public function test_read_only_all_returns_100_records_and_tokenized_next_links(): void
+    {
+        for ($index = 1; $index <= 101; $index++) {
+            Category::create([
+                'name' => 'Categoría '.$index,
+                'slug' => 'categoria-'.$index,
+            ]);
+        }
+
+        $user = User::factory()->create();
+        $shareToken = $user->createToken('api-link', ['read-only'])->plainTextToken;
+        $encodedToken = rawurlencode($shareToken);
+
+        $response = $this->getJson('/api/v1/all?token='.$encodedToken);
+        $response->assertOk()
+            ->assertJsonCount(8)
+            ->assertJsonPath('categories.count', 101)
+            ->assertJsonCount(100, 'categories.results')
+            ->assertJsonMissingPath('users')
+            ->assertJsonMissingPath('categories.results.0.password')
+            ->assertJsonMissingPath('categories.results.0.remember_token');
+
+        foreach ([
+            'categories',
+            'deals',
+            'comments',
+            'votes',
+            'robots',
+            'robot-runs',
+            'store-profiles',
+            'robot-notifications',
+        ] as $resource) {
+            $this->assertArrayHasKey('count', $response->json($resource));
+            $this->assertArrayHasKey('results', $response->json($resource));
+            $this->assertArrayHasKey('next', $response->json($resource));
+        }
+
+        $nextUrl = $response->json('categories.next');
+        $this->assertSame(
+            'api/v1/all',
+            trim((string) parse_url($nextUrl, PHP_URL_PATH), '/')
+        );
+        parse_str((string) parse_url($nextUrl, PHP_URL_QUERY), $nextQuery);
+        $this->assertSame('100', $nextQuery['limit']);
+        $this->assertSame('100', $nextQuery['offset']);
+        $this->assertSame($shareToken, $nextQuery['token']);
+
+        $nextPage = $this->getJson('/api/v1/all?limit=100&offset=100&token='.$encodedToken);
+        $nextPage->assertOk()
+            ->assertJsonCount(1, 'categories.results')
+            ->assertJsonPath('categories.next', null);
+
+        $this->getJson('/api/v1/all?limit=101&token='.$encodedToken)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('limit');
+
+        $ordinaryToken = $user->createToken('ordinary')->plainTextToken;
+        $this->withToken($ordinaryToken)
+            ->getJson('/api/v1/all')
+            ->assertUnauthorized();
+        $this->getJson('/api/v1/all')
+            ->assertUnauthorized();
+    }
+
     public function test_api_link_can_be_regenerated_and_revoked(): void
     {
         $user = User::factory()->create();

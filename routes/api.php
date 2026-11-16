@@ -37,6 +37,8 @@ Route::prefix('v1')->group(function (): void {
 
         Route::get('/', [ReadOnlyApiController::class, 'apiIndex'])
             ->name('api.v1.index');
+        Route::get('/all', [ReadOnlyApiController::class, 'all'])
+            ->name('api.v1.all');
 
         foreach ([
             'categories',

@@ -73,6 +73,8 @@ class ResolveReadOnlyShareToken
 
         $isApiIndex = $request->isMethod('GET')
             && trim($request->path(), '/') === 'api/v1';
+        $isApiAll = $request->isMethod('GET')
+            && trim($request->path(), '/') === 'api/v1/all';
         $isVersionedApiRequest = $request->is('api/v1') || $request->is('api/v1/*');
         $mustInspectBearer = ! $request->isMethod('GET') || $isVersionedApiRequest;
 
@@ -85,7 +87,7 @@ class ResolveReadOnlyShareToken
         $isReadOnly = $accessToken !== null
             && in_array('read-only', $accessToken->abilities, true);
 
-        if ($isApiIndex && ! $this->isValidShareToken($accessToken)) {
+        if (($isApiIndex || $isApiAll) && ! $this->isValidShareToken($accessToken)) {
             return $this->unauthenticated();
         }
 
@@ -115,7 +117,7 @@ class ResolveReadOnlyShareToken
         }
 
         $segments = explode('/', trim($request->path(), '/'));
-        if ($segments === ['api', 'v1']) {
+        if (in_array($segments, [['api', 'v1'], ['api', 'v1', 'all']], true)) {
             return true;
         }
 
