@@ -7,6 +7,7 @@ use App\Http\Controllers\ReadOnlyApiController;
 use App\Http\Controllers\RobotController;
 use App\Http\Controllers\RobotNotificationController;
 use App\Http\Controllers\ScrapeController;
+use App\Http\Controllers\ShareTokenController;
 use App\Http\Controllers\StoreProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -24,6 +25,9 @@ Route::prefix('v1')->group(function (): void {
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/logout', [AuthController::class, 'logout'])
             ->name('api.v1.logout');
+        Route::post('/share-token', ShareTokenController::class)
+            ->middleware('throttle:5,1')
+            ->name('api.v1.share-token');
 
         foreach ([
             'categories',

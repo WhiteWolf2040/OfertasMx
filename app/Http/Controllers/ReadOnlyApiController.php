@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\ResolveReadOnlyShareToken;
 use App\Http\Resources\ReadOnlyApiResource;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -52,6 +53,11 @@ class ReadOnlyApiController extends Controller
                 'limit' => $limit,
                 'offset' => $linkOffset,
             ]);
+            $shareToken = $request->attributes->get(ResolveReadOnlyShareToken::REQUEST_ATTRIBUTE);
+
+            if (is_string($shareToken) && $shareToken !== '') {
+                $query['token'] = $shareToken;
+            }
 
             return $request->url().'?'.http_build_query($query);
         };

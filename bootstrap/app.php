@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\ResolveReadOnlyShareToken;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -14,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withCommands([__DIR__.'/../app/Console/Commands'])
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->prepend(ResolveReadOnlyShareToken::class);
         $middleware->redirectGuestsTo(
             static fn (Request $request): ?string => $request->is('api/*')
                 ? null

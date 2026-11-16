@@ -297,4 +297,146 @@ class ReadOnlyApiTest extends TestCase
         ])->assertNoContent()
             ->assertHeader('Access-Control-Allow-Origin', '*');
     }
+
+    public function test_authenticated_user_can_create_expiring_read_only_share_links(): void
+    {
+        $user = User::factory()->create();
+        $loginToken = $user->createToken('login')->plainTextToken;
+
+        $response = $this->withToken($loginToken)
+            ->postJson('/api/v1/share-token');
+
+        $response->assertOk()
+            ->assertJsonStructure([
+                'token',
+                'expires_at',
+                'base_url',
+                'links' => [
+                    'categories',
+                    'deals',
+                    'comments',
+                    'votes',
+                    'robots',
+                    'robot-runs',
+                    'store-profiles',
+                    'robot-notifications',
+                    'users',
+                ],
+            ])
+            ->assertHeader('Cache-Control', 'no-store, private');
+
+        $shareToken = $response->json('token');
+        $storedToken = $user->tokens()->where('name', 'read-only-share')->firstOrFail();
+        $this->assertSame(['read-only'], $storedToken->abilities);
+        $this->assertTrue($storedToken->expires_at->between(
+            now()->addMinutes(14),
+            now()->addMinutes(16)
+        ));
+        $this->assertSame(config('app.url').'/api/v1', $response->json('base_url'));
+
+        parse_str(
+            (string) parse_url($response->json('links.categories'), PHP_URL_QUERY),
+            $linkQuery
+        );
+        $this->assertSame($shareToken, $linkQuery['token']);
+    }
+
+    public function test_read_only_share_token_authenticates_query_links_and_preserves_pagination(): void
+    {
+        Category::create(['name' => 'Hogar', 'slug' => 'hogar']);
+        Category::create(['name' => 'Moda', 'slug' => 'moda']);
+        $user = User::factory()->create();
+        $shareToken = $user->createToken(
+            'read-only-share',
+            ['read-only'],
+            now()->addMinutes(15)
+        )->plainTextToken;
+        $encodedToken = rawurlencode($shareToken);
+
+        $firstPage = $this->getJson(
+            '/api/v1/categories?limit=1&offset=0&token='.$encodedToken
+        );
+        $firstPage->assertOk()
+            ->assertJsonPath('count', 2)
+            ->assertJsonPath('results.0.name', 'Hogar')
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('Referrer-Policy', 'no-referrer');
+
+        parse_str(
+            (string) parse_url($firstPage->json('next'), PHP_URL_QUERY),
+            $nextQuery
+        );
+        $this->assertSame($shareToken, $nextQuery['token']);
+        $this->assertSame('1', $nextQuery['offset']);
+
+        $secondPage = $this->getJson(
+            '/api/v1/categories?limit=1&offset=1&token='.$encodedToken
+        );
+        $secondPage->assertOk()
+            ->assertJsonPath('results.0.name', 'Moda');
+
+        parse_str(
+            (string) parse_url($secondPage->json('previous'), PHP_URL_QUERY),
+            $previousQuery
+        );
+        $this->assertSame($shareToken, $previousQuery['token']);
+        $this->assertSame('0', $previousQuery['offset']);
+
+        $ordinaryToken = $user->createToken('ordinary')->plainTextToken;
+        $this->getJson('/api/v1/categories?token='.rawurlencode($ordinaryToken))
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Unauthenticated.');
+        $this->getJson('/api/me?token='.rawurlencode($shareToken))
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Unauthenticated.');
+
+        $expiredToken = $user->createToken(
+            'expired-share',
+            ['read-only'],
+            now()->subSecond()
+        )->plainTextToken;
+        $this->getJson('/api/v1/categories?token='.rawurlencode($expiredToken))
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Unauthenticated.');
+    }
+
+    public function test_read_only_share_token_cannot_access_write_methods(): void
+    {
+        $user = User::factory()->create();
+        $shareToken = $user->createToken(
+            'read-only-share',
+            ['read-only'],
+            now()->addMinutes(15)
+        )->plainTextToken;
+
+        $this->postJson('/api/v1/share-token?token='.rawurlencode($shareToken))
+            ->assertUnauthorized();
+        $this->withToken($shareToken)->postJson('/api/v1/share-token')
+            ->assertUnauthorized();
+        $this->withToken($shareToken)->postJson('/api/deals', [])
+            ->assertUnauthorized();
+        $this->withToken($shareToken)->putJson('/api/deals/999', [])
+            ->assertUnauthorized();
+        $this->withToken($shareToken)->patchJson('/api/robots/999', [])
+            ->assertUnauthorized();
+        $this->withToken($shareToken)->deleteJson('/api/deals/999')
+            ->assertUnauthorized();
+    }
+
+    public function test_share_token_creation_is_rate_limited_to_five_per_minute(): void
+    {
+        $user = User::factory()->create();
+        $loginToken = $user->createToken('login')->plainTextToken;
+        RateLimiter::clear(sha1((string) $user->getKey()));
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->withToken($loginToken)
+                ->postJson('/api/v1/share-token')
+                ->assertOk();
+        }
+
+        $this->withToken($loginToken)
+            ->postJson('/api/v1/share-token')
+            ->assertStatus(429);
+    }
 }
