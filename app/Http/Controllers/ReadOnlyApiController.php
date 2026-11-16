@@ -11,6 +11,17 @@ use Illuminate\Http\Request;
 
 class ReadOnlyApiController extends Controller
 {
+    private const SHAREABLE_RESOURCES = [
+        'categories',
+        'deals',
+        'comments',
+        'votes',
+        'robots',
+        'robot-runs',
+        'store-profiles',
+        'robot-notifications',
+    ];
+
     private const PUBLIC_RESOURCES = [
         'categories',
         'deals',
@@ -25,6 +36,30 @@ class ReadOnlyApiController extends Controller
         'robot-notifications',
         'users',
     ];
+
+    public function apiIndex(Request $request): JsonResponse
+    {
+        $token = $request->attributes->get(ResolveReadOnlyShareToken::REQUEST_ATTRIBUTE);
+        if (! is_string($token) || $token === '') {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $baseUrl = rtrim((string) config('app.url'), '/').'/api/v1';
+        $links = [];
+
+        foreach (self::SHAREABLE_RESOURCES as $resource) {
+            $links[$resource] = $baseUrl.'/'.$resource.'?'.http_build_query(
+                ['token' => $token],
+                '',
+                '&',
+                PHP_QUERY_RFC3986
+            );
+        }
+
+        return response()->json($links)
+            ->header('Cache-Control', 'no-store, private')
+            ->header('Referrer-Policy', 'no-referrer');
+    }
 
     public function index(Request $request, string $resource): JsonResponse
     {

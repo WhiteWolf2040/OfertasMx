@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ApiLinkController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DealController;
@@ -7,7 +8,6 @@ use App\Http\Controllers\ReadOnlyApiController;
 use App\Http\Controllers\RobotController;
 use App\Http\Controllers\RobotNotificationController;
 use App\Http\Controllers\ScrapeController;
-use App\Http\Controllers\ShareTokenController;
 use App\Http\Controllers\StoreProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -25,9 +25,18 @@ Route::prefix('v1')->group(function (): void {
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/logout', [AuthController::class, 'logout'])
             ->name('api.v1.logout');
-        Route::post('/share-token', ShareTokenController::class)
-            ->middleware('throttle:5,1')
-            ->name('api.v1.share-token');
+        Route::post('/api-link', [ApiLinkController::class, 'store'])
+            ->middleware('throttle:api-link')
+            ->name('api.v1.api-link.store');
+        Route::post('/api-link/regenerate', [ApiLinkController::class, 'regenerate'])
+            ->middleware('throttle:api-link')
+            ->name('api.v1.api-link.regenerate');
+        Route::delete('/api-link', [ApiLinkController::class, 'destroy'])
+            ->middleware('throttle:api-link')
+            ->name('api.v1.api-link.destroy');
+
+        Route::get('/', [ReadOnlyApiController::class, 'apiIndex'])
+            ->name('api.v1.index');
 
         foreach ([
             'categories',
@@ -38,7 +47,6 @@ Route::prefix('v1')->group(function (): void {
             'robot-runs',
             'store-profiles',
             'robot-notifications',
-            'users',
         ] as $resource) {
             Route::get('/'.$resource, [ReadOnlyApiController::class, 'index'])
                 ->defaults('resource', $resource)
@@ -49,6 +57,14 @@ Route::prefix('v1')->group(function (): void {
                 ->defaults('resource', $resource)
                 ->name('api.v1.'.$resource.'.show');
         }
+
+        Route::get('/users', [ReadOnlyApiController::class, 'index'])
+            ->defaults('resource', 'users')
+            ->name('api.v1.users.index');
+        Route::get('/users/{id}', [ReadOnlyApiController::class, 'show'])
+            ->whereNumber('id')
+            ->defaults('resource', 'users')
+            ->name('api.v1.users.show');
     });
 });
 

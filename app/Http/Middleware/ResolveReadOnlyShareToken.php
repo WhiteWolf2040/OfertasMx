@@ -22,7 +22,6 @@ class ResolveReadOnlyShareToken
         'robot-runs',
         'store-profiles',
         'robot-notifications',
-        'users',
     ];
 
     public function handle(Request $request, Closure $next): Response
@@ -72,16 +71,38 @@ class ResolveReadOnlyShareToken
             return $response;
         }
 
-        if (in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
-            $bearerToken = $request->bearerToken();
+        $isApiIndex = $request->isMethod('GET')
+            && trim($request->path(), '/') === 'api/v1';
+        $isVersionedApiRequest = $request->is('api/v1') || $request->is('api/v1/*');
+        $mustInspectBearer = ! $request->isMethod('GET') || $isVersionedApiRequest;
 
-            if ($bearerToken !== null) {
-                $accessToken = $this->findToken($bearerToken);
+        if (! $mustInspectBearer) {
+            return $next($request);
+        }
 
-                if ($accessToken !== null && in_array('read-only', $accessToken->abilities, true)) {
-                    return $this->unauthenticated();
-                }
+        $bearerToken = $request->bearerToken();
+        $accessToken = $bearerToken === null ? null : $this->findToken($bearerToken);
+        $isReadOnly = $accessToken !== null
+            && in_array('read-only', $accessToken->abilities, true);
+
+        if ($isApiIndex && ! $this->isValidShareToken($accessToken)) {
+            return $this->unauthenticated();
+        }
+
+        if ($isReadOnly) {
+            if (
+                ! $this->isValidShareToken($accessToken)
+                || ! $this->isShareableGetRequest($request)
+            ) {
+                return $this->unauthenticated();
             }
+
+            $request->attributes->set(self::REQUEST_ATTRIBUTE, $bearerToken);
+            $response = $next($request);
+            $response->headers->set('Cache-Control', 'no-store, private');
+            $response->headers->set('Referrer-Policy', 'no-referrer');
+
+            return $response;
         }
 
         return $next($request);
@@ -94,6 +115,9 @@ class ResolveReadOnlyShareToken
         }
 
         $segments = explode('/', trim($request->path(), '/'));
+        if ($segments === ['api', 'v1']) {
+            return true;
+        }
 
         return count($segments) >= 3
             && $segments[0] === 'api'
@@ -120,11 +144,14 @@ class ResolveReadOnlyShareToken
     {
         if (
             $accessToken === null
-            || ! in_array('read-only', $accessToken->abilities, true)
-            || $accessToken->expires_at === null
-            || $accessToken->expires_at->isPast()
+            || $accessToken->abilities !== ['read-only']
+            || ($accessToken->expires_at !== null && $accessToken->expires_at->isPast())
         ) {
             return false;
+        }
+
+        if ($accessToken->name === 'api-link' && $accessToken->expires_at === null) {
+            return true;
         }
 
         $expiration = config('sanctum.expiration');
